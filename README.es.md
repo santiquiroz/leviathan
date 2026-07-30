@@ -41,6 +41,17 @@ Ambas siguen `docs/STRATEGY.md` al pie de la letra; cualquier diferencia de comp
 3. Arrastra el EA a un gráfico. Por defecto corre en **solo señales**: dibuja el setup (flecha + líneas de entrada/SL/TP), actualiza el panel y envía alertas (popup/push/email). Tú decides si tomar la operación.
 4. Para dejarlo operar solo, cambia `Operating mode` a `Auto-trading` — después de haberlo backtesteado y entendido el riesgo.
 
+### Uso diario del EA
+
+- **Panel** (arriba a la izquierda): muestra modo, tendencia (BULLISH/BEARISH/NEUTRAL), última señal, R:R y la Entrada/SL/TP sugeridos del último setup. El botón inferior pausa/reanuda la detección de señales sin quitar el EA.
+- **Cuando salta una señal**: aparecen una flecha + líneas punteadas de Entrada/SL/TP en el gráfico y recibes las alertas que hayas activado (`popup` en la terminal, `push` a la app móvil de MT5, `email`). En modo solo-señales no se opera nada — la alerta incluye el lote sugerido para que ejecutes manualmente.
+- **Modo auto-trading**: usa tu modo de sizing (`Lote fijo` o `% de riesgo` del equity), respeta `Una sola posición concurrente` y aplica los opcionales: break-even, trailing por ATR, filtro de sesión, filtro de spread y límite de pérdida diaria. Un `Magic number` distinto por gráfico si corres varias instancias.
+- **Strategy Tester**: el EA corre en el tester de MT5 (Ctrl+R) — usa "Cada tick basado en ticks reales" para los fills más realistas, y el modo visual para ver el panel y las señales en replay.
+
+### Ejecutable precompilado
+
+Pronto habrá un `Leviathan.ex5` compilado adjunto en los [Releases de GitHub](https://github.com/santiquiroz/leviathan/releases), para que quien no programa lo suelte directo en `MQL5/Experts/` sin abrir MetaEditor. Mientras tanto, compilar desde el código toma unos dos minutos (pasos arriba) — y compilarlo tú mismo siempre es la opción más confiable para algo que puede tocar tu dinero.
+
 ## Inicio rápido — Backtester Python
 
 ```bash
@@ -51,10 +62,31 @@ pip install -e .
 leviathan-bt backtest --data ../data/sample/EURUSD_H1.csv --config examples/config.example.toml
 ```
 
-Barrido de parámetros y walk-forward:
+Flags útiles: `--out report.txt` guarda el reporte de texto, `--plot equity.png` guarda la curva de equity (requiere `pip install -e .[plot]`).
+
+**Barrido de parámetros** — pon los valores a probar en un JSON:
+
+```json
+{ "atr_multiplier": [1.0, 1.5, 2.0], "risk_reward": [1.5, 2.0, 3.0], "structure_lookback": [10, 20, 30] }
+```
 
 ```bash
-leviathan-bt sweep --data tus_datos.csv --config examples/config.example.toml --grid grid.json
+leviathan-bt sweep --data tus_datos.csv --config examples/config.example.toml --grid grid.json --jobs 4
+```
+
+Imprime las 10 mejores combinaciones por profit factor (los sets con menos de 30 trades se descartan — evidencia insuficiente).
+
+**Walk-forward** (la forma honesta de evaluar un barrido) — desde Python:
+
+```python
+from leviathan_bt import load_csv, load_toml
+from leviathan_bt.sweep import walk_forward
+
+df = load_csv("tus_datos.csv")
+params, symbol, config = load_toml("examples/config.example.toml")
+result = walk_forward(df, params, {"atr_multiplier": [1.0, 1.5, 2.0]}, symbol, config,
+                      is_bars=4000, oos_bars=1000, step_bars=1000)
+print(result["wf_efficiency"])   # R fuera de muestra / R en muestra — debajo de ~0.5 huele a sobreajuste
 ```
 
 Fuentes de datos (ver loaders en `python/leviathan_bt/data.py`):
@@ -79,6 +111,22 @@ Todos los parámetros de la estrategia existen como inputs del EA y claves TOML.
 | `onePositionOnly` | true | Una sola posición concurrente |
 
 Extras (todos apagados por defecto): break-even a +1R, trailing stop por ATR y filtro de sesión (EA + backtester); filtro de spread máximo y límite de pérdida diaria (solo EA, modo auto).
+
+## Familias de estrategias más usadas — y dónde encaja Leviathan
+
+Los enfoques más comunes en algo trading retail, como contexto:
+
+| Familia | Idea | Leviathan |
+|---|---|---|
+| **Trend following** | Operar en la dirección de la tendencia (medias móviles / timeframe mayor) | ✅ Núcleo: filtro EMA 9/21 + EMA 200 |
+| **Breakout / estructura** | Entrar cuando el precio rompe un máximo/mínimo o rango reciente | ✅ Núcleo: gatillo de ruptura de estructura (BOS) |
+| **Confirmación por velas** | Engulfing, pinbar, inside bar como timing de entrada | ✅ Núcleo: engulfing + pinbar (más patrones = PRs bienvenidos) |
+| **Mean reversion** | Operar el retorno a la media (extremos de RSI, toques de Bollinger) | ❌ Tesis opuesta — pelearía con el filtro de tendencia; encaja mejor como módulo aparte |
+| **Momentum / cruce de medias** | Entrar en el cruce mismo de la media rápida/lenta | Parcial — Leviathan usa el estado del cruce como *filtro*, no como entrada |
+| **Grid / DCA** | Escalera de órdenes alrededor del precio, promediar | ❌ Fuera de alcance (freqtrade/OctoBot lo hacen bien para cripto) |
+| **Scalping / HFT** | Muchas operaciones pequeñas en ticks/segundos | ❌ Fuera de alcance — requiere infraestructura que este proyecto evita a propósito |
+
+Leviathan es un **sistema trend-following de rupturas con confirmación por velas** — la combinación que más enseñan los cursos de acción del precio retail. Esa popularidad es justo la razón para tener una implementación open source honesta y testeable.
 
 ## Expectativas honestas
 
