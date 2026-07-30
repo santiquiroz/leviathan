@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package
+        run: pip install ./python pytest
+      - name: Run tests
+        run: pytest python/tests -q
+
+  # MQL5 compile checking in CI requires provisioning a full MetaTrader 5
+  # installation on the runner (fx31337/mql-compile-action@v2 does not install
+  # the platform). Until that is wired, MQL5 changes must compile locally in
+  # MetaEditor with zero warnings — see CONTRIBUTING.md.

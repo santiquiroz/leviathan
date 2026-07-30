@@ -1,0 +1,43 @@
+name: Bug report
+description: Something is broken or behaves differently from docs/STRATEGY.md
+labels: [bug]
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - MQL5 EA
+        - Python backtester
+        - Docs
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: What did you expect vs what actually happened?
+    validations:
+      required: true
+  - type: input
+    id: market
+    attributes:
+      label: Symbol / timeframe
+      placeholder: EURUSD H1
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration used
+      description: EA inputs or TOML config (redact anything private)
+      render: text
+  - type: input
+    id: environment
+    attributes:
+      label: Broker + MT5 build / Python version
+      placeholder: "IC Markets, MT5 build 4620 / Python 3.12"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Experts-tab log lines or Python traceback
+      render: text

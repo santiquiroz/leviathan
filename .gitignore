@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# MetaTrader compiled binaries
+*.ex5
+*.ex4
+
+# Data (keep the synthetic sample)
+data/*.csv
+data/*.parquet
+!data/sample/EURUSD_H1.csv
+
+# Backtest outputs
+reports/
+/*.png
+
+# OS / editors
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/

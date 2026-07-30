@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "leviathan-bt"
+version = "0.1.0"
+description = "Trend-filtered price action backtester for the Leviathan strategy"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.7"]
+data = ["yfinance>=0.2"]
+
+[project.scripts]
+leviathan-bt = "leviathan_bt.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.setuptools]
+packages = ["leviathan_bt"]

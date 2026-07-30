@@ -1,0 +1,46 @@
+# Leviathan backtester configuration — every key with its default value.
+# Round-trips through leviathan_bt.config.load_toml.
+
+[strategy]
+ema_fast = 9                  # fast EMA period (trend filter)
+ema_slow = 21                 # slow EMA period (trend filter)
+ema_trend = 200               # macro trend EMA period
+structure_lookback = 20       # bars scanned for Break of Structure
+use_engulfing = true          # enable engulfing entry trigger
+use_pinbar = true             # enable pinbar entry trigger
+pinbar_wick_ratio = 0.66      # min dominant wick fraction of the bar range
+sl_mode = "atr"               # stop-loss mode: "atr" | "swing"
+atr_period = 14               # ATR period for the stop
+atr_multiplier = 1.5          # ATR multiplier for the stop distance
+swing_lookback = 10           # bars for the swing-mode stop
+risk_reward = 2.0             # TP distance as multiple of SL distance
+
+[symbol]
+name = "EURUSD"               # symbol label (reporting only)
+digits = 5                    # price decimal digits
+point = 0.00001               # smallest price increment
+pip_size = 0.0001             # pip size (10 points on 5-digit FX)
+contract_size = 100000.0      # units per 1.0 lot
+spread_points = 10.0          # spread in points added to ask-side fills
+slippage_points = 2.0         # slippage in points on market and SL fills
+commission_per_lot = 0.0      # commission per lot per side
+lot_step = 0.01               # broker volume step
+lot_min = 0.01                # broker minimum volume
+lot_max = 100.0               # broker maximum volume
+tick_value = 1.0              # account-currency value of one tick per lot
+tick_size = 0.00001           # price change worth tick_value
+
+[backtest]
+initial_equity = 10000.0      # starting account equity
+sizing_mode = "fixed_lot"     # position sizing: "fixed_lot" | "risk_percent"
+lot_size = 0.10               # fixed lot size (fixed_lot mode)
+risk_percent = 1.0            # equity % risked per trade (risk_percent mode)
+one_position_only = true      # block new entries while a position is open
+use_breakeven = false         # move SL to entry once the trigger R is reached
+breakeven_trigger_r = 1.0     # R multiple that arms break-even
+breakeven_offset_points = 0.0 # extra points beyond entry for the break-even SL
+use_trailing = false          # enable the ATR trailing stop
+trailing_atr_mult = 2.0       # ATR multiplier for the trailing stop
+use_session_filter = false    # only take signals inside the session window
+session_start_hour = 7        # session start hour, server time (0-23)
+session_end_hour = 20         # session end hour, server time (0-23)

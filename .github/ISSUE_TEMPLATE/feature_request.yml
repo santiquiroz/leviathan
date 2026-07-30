@@ -1,0 +1,35 @@
+name: Feature request
+description: Propose a new capability (pattern, filter, loader, metric...)
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - MQL5 EA
+        - Python backtester
+        - Both (strategy logic)
+        - Docs
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can't you do today?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Remember strategy-logic changes must be specified in docs/STRATEGY.md and implemented on both sides.
+    validations:
+      required: true
+  - type: checkboxes
+    id: pr
+    attributes:
+      label: Contribution
+      options:
+        - label: I'm willing to open a PR for this
