@@ -153,6 +153,21 @@ claude mcp add leviathan -- leviathan-mcp        # Claude Code
 
 Herramientas expuestas (todas de solo lectura): `leviathan_run_backtest`, `leviathan_grid_search`, `leviathan_walk_forward`, `leviathan_describe_data`, `leviathan_get_strategy_spec`, `leviathan_read_ea_signals` (lee el log `Leviathan_signals.csv` del EA).
 
+### Puente al terminal en vivo (Windows)
+
+Un segundo servidor MCP se conecta a un **terminal MT5 corriendo** mediante el paquete oficial `MetaTrader5`:
+
+```bash
+pip install -e .[mcp] MetaTrader5
+claude mcp add leviathan-mt5 -- leviathan-mt5-mcp
+```
+
+Herramientas de solo lectura: `mt5_account_info`, `mt5_positions`, `mt5_quote`, `mt5_recent_bars`, `mt5_deal_history`. Dos herramientas de ejecución **bloqueadas** (`mt5_place_order`, `mt5_close_position`): deshabilitadas salvo que el servidor corra con `LEVIATHAN_ALLOW_TRADING=1` — e incluso así rechazan cuentas no-demo salvo que además exista `LEVIATHAN_ALLOW_REAL=1`. Toda orden exige SL y TP.
+
+Prompts de ejemplo ya conectado: *"revisa mi cuenta MT5 y las posiciones abiertas"*, *"trae las últimas 200 velas H1 de EURUSD del terminal y dime si hay un setup de Leviathan cerca"*, *"lee el log de señales del EA, compáralo con el historial de deals y dime qué señales me salté"*.
+
+**Sobre automatización total**: si quieres ejecución desatendida, el modo `Auto-trading` del EA ya la hace — determinista, en cada tick, sin IA en el circuito. El patrón Claude-en-el-circuito rinde más como *supervisor*: revisar señales, llevar el journal, auditar si lo vivo coincide con el backtest. Un LLM decidiendo entradas en tiempo real agrega latencia y no-determinismo sin agregar ventaja.
+
 Una nota sobre "modelos de IA para trading", porque siempre sale el tema: la evidencia a la fecha dice que los modelos de predicción de precios sin ajuste (foundation models de series de tiempo, sentimiento estilo FinBERT) **no** dan ventaja lista para usar — las evaluaciones publicadas los muestran por debajo de baselines de gradient boosting en retornos, y a los modelos de sentimiento populares peor que el azar en el movimiento del día siguiente. Donde la IA sí ayuda demostrablemente es como **copiloto de investigación**: escribir y auditar estrategias, correr backtests honestos, cazar sobreajuste. Ese es exactamente el rol que este servidor MCP le da.
 
 ## Por qué MetaTrader 5 — y cuándo usar otra cosa

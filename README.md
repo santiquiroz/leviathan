@@ -154,6 +154,21 @@ claude mcp add leviathan -- leviathan-mcp        # Claude Code
 
 Tools exposed (all read-only): `leviathan_run_backtest`, `leviathan_grid_search`, `leviathan_walk_forward`, `leviathan_describe_data`, `leviathan_get_strategy_spec`, `leviathan_read_ea_signals` (reads the EA's `Leviathan_signals.csv` log).
 
+### Live terminal bridge (Windows)
+
+A second MCP server connects to a **running MT5 terminal** through the official `MetaTrader5` package:
+
+```bash
+pip install -e .[mcp] MetaTrader5
+claude mcp add leviathan-mt5 -- leviathan-mt5-mcp
+```
+
+Read-only tools: `mt5_account_info`, `mt5_positions`, `mt5_quote`, `mt5_recent_bars`, `mt5_deal_history`. Two **gated** execution tools (`mt5_place_order`, `mt5_close_position`) are disabled unless the server runs with `LEVIATHAN_ALLOW_TRADING=1` — and even then they refuse non-demo accounts unless `LEVIATHAN_ALLOW_REAL=1` is also set. Orders always require SL and TP.
+
+Example prompts once connected: *"check my MT5 account and open positions"*, *"pull the last 200 H1 bars of EURUSD from the terminal and tell me if a Leviathan setup is close"*, *"read the EA's signal log, compare it with the deal history, and tell me which signals I skipped"*.
+
+**On full automation**: if you want unattended execution, the EA's `Auto-trading` mode already does it — deterministic, on every tick, no AI in the loop. The Claude-in-the-loop pattern is best as a *supervisor*: reviewing signals, journaling trades, auditing whether live results match the backtest. An LLM deciding entries in real time adds latency and nondeterminism without adding edge.
+
 A note on "AI models for trading", since it comes up: the evidence to date says zero-shot price-prediction models (time-series foundation models, FinBERT-style sentiment) do **not** provide an out-of-the-box edge — published evaluations show them underperforming plain gradient-boosting baselines on returns, and popular sentiment models scoring worse than random on next-day moves. Where AI demonstrably helps is as a **research copilot**: writing and auditing strategies, running honest backtests, catching overfitting. That is exactly the role this MCP server gives it.
 
 ## Why MetaTrader 5 — and when to use something else
