@@ -45,8 +45,9 @@ double LevBufferValue(const int handle, const int shift)
   {
    if(handle == INVALID_HANDLE || BarsCalculated(handle) <= shift)
       return EMPTY_VALUE;
+   // Single-value copy: buffer[0] holds the requested shift either way,
+   // so no ArraySetAsSeries is needed (and it is invalid on a static array)
    double buffer[1];
-   ArraySetAsSeries(buffer, true);
    if(CopyBuffer(handle, 0, shift, 1, buffer) != 1)
       return EMPTY_VALUE;
    return buffer[0];
