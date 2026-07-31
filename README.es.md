@@ -34,12 +34,41 @@ Ambas siguen `docs/STRATEGY.md` al pie de la letra; cualquier diferencia de comp
 
 ## Inicio rápido — EA MQL5
 
+¿Ya conoces MetaTrader? Cuatro pasos:
+
 1. Copia el contenido de `mql5/` en la carpeta de datos de MetaTrader 5 (`Archivo → Abrir carpeta de datos → MQL5`):
    - `mql5/Experts/Leviathan.mq5` → `MQL5/Experts/`
    - `mql5/Include/Leviathan/` → `MQL5/Include/Leviathan/`
 2. Compila `Leviathan.mq5` en MetaEditor (F7).
 3. Arrastra el EA a un gráfico. Por defecto corre en **solo señales**: dibuja el setup (flecha + líneas de entrada/SL/TP), actualiza el panel y envía alertas (popup/push/email). Tú decides si tomar la operación.
 4. Para dejarlo operar solo, cambia `Operating mode` a `Auto-trading` — después de haberlo backtesteado y entendido el riesgo.
+
+### ¿Nunca has usado MetaTrader? Guía completa
+
+**Fase 1 — Instalar (10 minutos, gratis, sin dinero real):**
+
+1. Descarga **MetaTrader 5** desde metatrader5.com (o desde tu broker si ya tienes uno).
+2. Ábrelo. La primera vez te pide una cuenta: elige **cuenta demo** (el servidor "MetaQuotes-Demo" sirve). Dinero ficticio — así se prueba todo durante semanas antes de siquiera pensar en fondos reales.
+3. `Archivo → Abrir carpeta de datos`. Se abre un explorador; entra a la carpeta `MQL5`.
+4. De este repo, copia:
+   - `mql5/Experts/Leviathan.mq5` → a `MQL5/Experts/`
+   - la carpeta `mql5/Include/Leviathan/` completa → a `MQL5/Include/`
+5. De vuelta en MT5 presiona **F4** (abre MetaEditor). Abre `Experts/Leviathan.mq5` y presiona **F7** (compilar). El log de abajo debe decir `0 errors, 0 warnings` — eso genera el ejecutable `.ex5`.
+
+**Fase 2 — Ponerlo en un gráfico:**
+
+6. De vuelta en MT5, **Ctrl+N** abre el Navegador → `Asesores Expertos → Leviathan`.
+7. Arrastra "Leviathan" a un gráfico, por ejemplo **EURUSD H1** (para cambiar timeframe: clic derecho en el gráfico → Periodicidad → H1).
+8. En el diálogo que aparece, pestaña "Común": marca "Permitir trading algorítmico" y dale OK. Aparece el **panel oscuro** arriba a la izquierda.
+9. Listo. Modo por defecto = **solo señales**: el bot NO opera. Cuando las tres condiciones se alinean (tendencia + ruptura de estructura + vela) dibuja la flecha y las líneas de Entrada/SL/TP y lanza la alerta con el lote sugerido. Tú decides si entrar manualmente.
+10. Alertas al celular: instala la app móvil de MT5 y en el escritorio ve a `Herramientas → Opciones → Notificaciones` y pega tu MetaQuotes ID (la app lo muestra en Ajustes → Mensajes).
+
+**Fase 3 — Backtest antes de creer en nada:**
+
+11. **Ctrl+R** abre el Strategy Tester: elige Leviathan, un símbolo, un rango de fechas, modo "Cada tick basado en ticks reales", y presiona Iniciar. El modo visual te deja ver las señales en replay.
+12. Para investigación seria (barridos de parámetros, walk-forward) usa el motor Python de abajo — el inicio rápido corre en tres comandos con los datos de ejemplo incluidos.
+
+**Regla de oro: mínimo 1–2 meses en demo.** Con R:R 1:2 necesitas más de 33.3% de aciertos solo para empatar *antes* de costos — ver [Expectativas honestas](#expectativas-honestas).
 
 ### Uso diario del EA
 
@@ -111,6 +140,19 @@ Todos los parámetros de la estrategia existen como inputs del EA y claves TOML.
 | `onePositionOnly` | true | Una sola posición concurrente |
 
 Extras (todos apagados por defecto): break-even a +1R, trailing stop por ATR y filtro de sesión (EA + backtester); filtro de spread máximo y límite de pérdida diaria (solo EA, modo auto).
+
+## Por qué MetaTrader 5 — y cuándo usar otra cosa
+
+MT5 no es lock-in de proveedor; es el estándar de facto del forex retail. Para lo que este bot hace (forex/oro/índices, señales de acción del precio, ejecución manual o semi-auto) es la herramienta correcta: gratis, soportado por casi todo broker, tester integrado con ticks reales, alertas push al celular, corre en un VPS de $5.
+
+El riesgo real de lock-in ya está neutralizado por diseño: la estrategia vive en [docs/STRATEGY.md](docs/STRATEGY.md) (papel, no plataforma) y el motor Python es pandas puro — MT5 es solo el adaptador de ejecución. Cambiar de plataforma después significa reescribir una capa delgada, no el proyecto.
+
+Cuándo otro stack SÍ es mejor opción:
+
+- **Cripto** → [freqtrade](https://www.freqtrade.io) (open source, exchanges reales, modo dry-run). El cripto por CFD de brokers MT5 tiene spreads terribles — no fuerces Leviathan ahí.
+- **Acciones de EE.UU.** → API de Interactive Brokers.
+- **Infraestructura de grado institucional** → [NautilusTrader](https://nautilustrader.io) — potente, pero la curva de aprendizaje no se justifica para esta clase de estrategia.
+- **Qué evitar**: EAs cerrados de pago e indicadores propietarios de comunidades de pago — *eso* sí es lock-in real (a la caja negra de otro). Este repo existe precisamente para no depender de uno.
 
 ## Familias de estrategias más usadas — y dónde encaja Leviathan
 
