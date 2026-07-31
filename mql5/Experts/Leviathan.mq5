@@ -68,6 +68,8 @@ input group "=== ALERTS ==="
 input bool            InpAlertPopup         = true;    // Terminal popup alert
 input bool            InpAlertPush          = true;    // Push notification
 input bool            InpAlertEmail         = false;   // Email notification
+input string          InpAlertWebhookUrl    = "";      // Webhook URL (Discord/Slack; whitelist in MT5 options)
+input bool            InpLogSignals         = true;    // Log signals to file (MQL5/Files/Leviathan_signals.csv)
 
 input group "=== GENERAL ==="
 input long            InpMagicNumber        = 226701;      // Magic number
@@ -208,6 +210,9 @@ void ProcessSignal(const int direction, const string patternName)
                                  DoubleToString(entry, _Digits), DoubleToString(sl, _Digits),
                                  DoubleToString(tp, _Digits), lots);
    LevSendAlerts(InpAlertPopup, InpAlertPush, InpAlertEmail, message);
+   LevSendWebhook(InpAlertWebhookUrl, message);
+   if(InpLogSignals)
+      LevLogSignal(direction, patternName, entry, sl, tp, lots);
 
    if(InpExecutionMode != LEV_AUTO_TRADE)
       return;

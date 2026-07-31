@@ -16,9 +16,11 @@ dependencies = [
 [project.optional-dependencies]
 plot = ["matplotlib>=3.7"]
 data = ["yfinance>=0.2"]
+mcp = ["mcp>=2.0"]
 
 [project.scripts]
 leviathan-bt = "leviathan_bt.cli:main"
+leviathan-mcp = "leviathan_bt.mcp_server:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -72,7 +72,8 @@ Already know MetaTrader? Four steps:
 ### Using the EA day to day
 
 - **Panel** (top-left): shows mode, trend (BULLISH/BEARISH/NEUTRAL), last signal, R:R and the suggested Entry/SL/TP of the latest setup. The bottom button pauses/resumes signal detection without removing the EA.
-- **When a signal fires**: an arrow + dashed Entry/SL/TP lines appear on the chart and you get the alerts you enabled (`Terminal popup`, `Push notification` to the MT5 mobile app, `Email`). In signals-only mode nothing is traded — the alert includes the suggested lot size so you can execute manually.
+- **When a signal fires**: an arrow + dashed Entry/SL/TP lines appear on the chart and you get the alerts you enabled — `Terminal popup`, `Push notification` to the MT5 mobile app, `Email`, and/or a **webhook** (paste a Discord or Slack webhook URL into `Webhook URL` and whitelist it under `Tools → Options → Expert Advisors → Allow WebRequest`). In signals-only mode nothing is traded — the alert includes the suggested lot size so you can execute manually.
+- **Signal log**: with `Log signals to file` on (default), every signal is appended to `MQL5/Files/Leviathan_signals.csv` — an auditable history you can analyze later (or feed to Claude via the MCP server below).
 - **Auto-trading mode**: uses your sizing mode (`Fixed lot` or `Risk %` of equity), respects `Single concurrent position`, and applies the optional break-even / ATR trailing / session / spread / daily-loss-limit settings. One `Magic number` per chart if you run several instances.
 - **Strategy Tester**: the EA runs in MT5's tester (Ctrl+R) — use "Every tick based on real ticks" for the most realistic fills, and the visual mode to watch the panel and signals replay.
 
@@ -141,6 +142,19 @@ All strategy parameters are exposed as EA inputs and TOML config keys. The main 
 Extras (all off by default): break-even at +1R, ATR trailing stop and session filter (EA + backtester); max-spread filter and daily loss limit (EA only, auto mode).
 
 The full table with every input is in [docs/STRATEGY.md](docs/STRATEGY.md).
+
+## Claude / AI integration (MCP server)
+
+Leviathan ships an [MCP](https://modelcontextprotocol.io) server so AI assistants (Claude Code, Claude Desktop, or any MCP client) can drive the backtester conversationally — "backtest this CSV with ATR 2.0", "sweep the RR from 1.5 to 3 and walk-forward the winner", "read my EA's signal log and compare it against the backtest".
+
+```bash
+cd python && pip install -e .[mcp]
+claude mcp add leviathan -- leviathan-mcp        # Claude Code
+```
+
+Tools exposed (all read-only): `leviathan_run_backtest`, `leviathan_grid_search`, `leviathan_walk_forward`, `leviathan_describe_data`, `leviathan_get_strategy_spec`, `leviathan_read_ea_signals` (reads the EA's `Leviathan_signals.csv` log).
+
+A note on "AI models for trading", since it comes up: the evidence to date says zero-shot price-prediction models (time-series foundation models, FinBERT-style sentiment) do **not** provide an out-of-the-box edge — published evaluations show them underperforming plain gradient-boosting baselines on returns, and popular sentiment models scoring worse than random on next-day moves. Where AI demonstrably helps is as a **research copilot**: writing and auditing strategies, running honest backtests, catching overfitting. That is exactly the role this MCP server gives it.
 
 ## Why MetaTrader 5 — and when to use something else
 

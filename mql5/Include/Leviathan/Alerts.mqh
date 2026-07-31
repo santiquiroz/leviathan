@@ -17,6 +17,43 @@ void LevSendAlerts(const bool popup, const bool push, const bool email, const st
       SendMail("Leviathan - New Signal", message);
   }
 
+void LevSendWebhook(const string url, const string message)
+  {
+   if(url == "")
+      return;
+   // "content" is read by Discord, "text" by Slack/generic webhooks
+   string body = "{\"content\": \"" + message + "\", \"text\": \"" + message + "\"}";
+   char post[];
+   char result[];
+   string resultHeaders;
+   StringToCharArray(body, post, 0, StringLen(body));
+   ResetLastError();
+   int status = WebRequest("POST", url, "Content-Type: application/json\r\n", 5000, post, result, resultHeaders);
+   if(status == -1)
+      Print("Leviathan: webhook failed (error ", GetLastError(),
+            "). Add the URL under Tools > Options > Expert Advisors > Allow WebRequest.");
+  }
+
+void LevLogSignal(const int direction, const string pattern, const double entry,
+                  const double sl, const double tp, const double lots)
+  {
+   int handle = FileOpen("Leviathan_signals.csv", FILE_READ | FILE_WRITE | FILE_TXT | FILE_ANSI);
+   if(handle == INVALID_HANDLE)
+     {
+      Print("Leviathan: could not open signal log file. Error ", GetLastError());
+      return;
+     }
+   FileSeek(handle, 0, SEEK_END);
+   string line = StringFormat("%s;%s;%s;%s;%s;%s;%s;%s;%.2f",
+                              TimeToString(TimeCurrent(), TIME_DATE | TIME_SECONDS),
+                              _Symbol, EnumToString(_Period),
+                              direction > 0 ? "LONG" : "SHORT", pattern,
+                              DoubleToString(entry, _Digits), DoubleToString(sl, _Digits),
+                              DoubleToString(tp, _Digits), lots);
+   FileWrite(handle, line);
+   FileClose(handle);
+  }
+
 void LevDrawLevelLine(const string name, const double price, const color lineColor, const string text)
   {
    if(ObjectFind(0, name) < 0)
