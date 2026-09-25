@@ -21,6 +21,7 @@ READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempot
 TRADE = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=False, open_world_hint=True)
 
 MAGIC = 226701
+DEFAULT_MAX_LOTS = 1.0
 _TIMEFRAMES = {
     "M1": mt5.TIMEFRAME_M1, "M5": mt5.TIMEFRAME_M5, "M15": mt5.TIMEFRAME_M15, "M30": mt5.TIMEFRAME_M30,
     "H1": mt5.TIMEFRAME_H1, "H4": mt5.TIMEFRAME_H4, "D1": mt5.TIMEFRAME_D1, "W1": mt5.TIMEFRAME_W1,
@@ -47,6 +48,39 @@ def _trading_enabled() -> None:
             f"Account {account.login} is NOT a demo account. Refusing to trade real money. "
             "Set LEVIATHAN_ALLOW_REAL=1 only if you truly understand the risk."
         )
+
+
+def _max_lots() -> float:
+    raw = os.environ.get("LEVIATHAN_MAX_LOTS")
+    if raw is None:
+        return DEFAULT_MAX_LOTS
+    try:
+        value = float(raw)
+    except ValueError:
+        value = float("nan")
+    if not value > 0:
+        raise ValueError(f"LEVIATHAN_MAX_LOTS must be a positive number, got {raw!r}")
+    return value
+
+
+def _validate_lots(lots: float, max_lots: float) -> None:
+    if not lots > 0:
+        raise ValueError(f"lots must be > 0, got {lots}")
+    if lots > max_lots:
+        raise ValueError(f"lots {lots} exceeds the per-order cap of {max_lots} (LEVIATHAN_MAX_LOTS)")
+
+
+def _validate_stops(direction: str, price: float, sl: float, tp: float) -> None:
+    below, above, rule = (sl, tp, "sl < price < tp") if direction == "long" else (tp, sl, "tp < price < sl")
+    if not below < price < above:
+        raise ValueError(f"{direction} at {price} needs {rule}; got sl={sl}, tp={tp}")
+
+
+def _current_tick(symbol: str) -> Any:
+    tick = mt5.symbol_info_tick(symbol)
+    if tick is None:
+        raise RuntimeError(f"no tick data for {symbol}: {mt5.last_error()}")
+    return tick
 
 
 @mcp.tool(name="mt5_account_info", title="MT5 account snapshot", annotations=READ_ONLY)
@@ -124,6 +158,8 @@ def mt5_recent_bars(symbol: str, timeframe: str = "H1", count: int = 100) -> str
     tf = _TIMEFRAMES.get(timeframe.upper())
     if tf is None:
         raise ValueError(f"timeframe must be one of {sorted(_TIMEFRAMES)}")
+    if count <= 0:
+        raise ValueError(f"count must be > 0, got {count}")
     rates = mt5.copy_rates_from_pos(symbol, tf, 0, min(count, 1000))
     if rates is None:
         raise RuntimeError(f"no bars for {symbol} {timeframe}: {mt5.last_error()}")
@@ -171,17 +207,20 @@ def mt5_place_order(
 ) -> str:
     """Send a market order with mandatory SL/TP. DISABLED unless env LEVIATHAN_ALLOW_TRADING=1, and refuses
     real (non-demo) accounts unless LEVIATHAN_ALLOW_REAL=1 as well. direction: "long" | "short".
+    lots must be > 0 and <= LEVIATHAN_MAX_LOTS (default 1.0); SL/TP must sit on the correct side of the price.
     """
     _connect()
     _trading_enabled()
     if direction not in ("long", "short"):
         raise ValueError('direction must be "long" or "short"')
+    _validate_lots(lots, _max_lots())
     if sl <= 0 or tp <= 0:
         raise ValueError("sl and tp are mandatory - no naked positions via this tool")
     if not mt5.symbol_select(symbol, True):
         raise ValueError(f"unknown symbol '{symbol}'")
-    tick = mt5.symbol_info_tick(symbol)
+    tick = _current_tick(symbol)
     price = tick.ask if direction == "long" else tick.bid
+    _validate_stops(direction, price, sl, tp)
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": symbol,
@@ -215,7 +254,7 @@ def mt5_close_position(ticket: int) -> str:
     if not positions:
         raise ValueError(f"no open position with ticket {ticket}")
     p = positions[0]
-    tick = mt5.symbol_info_tick(p.symbol)
+    tick = _current_tick(p.symbol)
     closing_type = mt5.ORDER_TYPE_SELL if p.type == mt5.POSITION_TYPE_BUY else mt5.ORDER_TYPE_BUY
     request = {
         "action": mt5.TRADE_ACTION_DEAL,

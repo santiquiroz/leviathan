@@ -163,7 +163,7 @@ pip install -e .[mcp] MetaTrader5
 claude mcp add leviathan-mt5 -- leviathan-mt5-mcp
 ```
 
-Read-only tools: `mt5_account_info`, `mt5_positions`, `mt5_quote`, `mt5_recent_bars`, `mt5_deal_history`. Two **gated** execution tools (`mt5_place_order`, `mt5_close_position`) are disabled unless the server runs with `LEVIATHAN_ALLOW_TRADING=1` — and even then they refuse non-demo accounts unless `LEVIATHAN_ALLOW_REAL=1` is also set. Orders always require SL and TP.
+Read-only tools: `mt5_account_info`, `mt5_positions`, `mt5_quote`, `mt5_recent_bars`, `mt5_deal_history`. Two **gated** execution tools (`mt5_place_order`, `mt5_close_position`) are disabled unless the server runs with `LEVIATHAN_ALLOW_TRADING=1` — and even then they refuse non-demo accounts unless `LEVIATHAN_ALLOW_REAL=1` is also set. Orders always require SL and TP on the correct side of the entry price (below it for longs, above it for shorts), and a positive volume no larger than `LEVIATHAN_MAX_LOTS` (default `1.0` lot per order; set it in the server environment to lower or raise the cap).
 
 Example prompts once connected: *"check my MT5 account and open positions"*, *"pull the last 200 H1 bars of EURUSD from the terminal and tell me if a Leviathan setup is close"*, *"read the EA's signal log, compare it with the deal history, and tell me which signals I skipped"*.
 
