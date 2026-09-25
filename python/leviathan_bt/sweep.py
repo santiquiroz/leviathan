@@ -38,7 +38,7 @@ def run_full(
     signals = build_signals(df, params)
     raw_trades, equity_curve = run_backtest(df, signals, params, symbol, config)
     trades = _counted_trades(raw_trades, window_start)
-    summary = summarize(trades, equity_curve, config.initial_equity)
+    summary = summarize(trades, _window_equity(equity_curve, window_start), config.initial_equity)
     return summary, trades, equity_curve
 
 
@@ -72,7 +72,7 @@ def walk_forward(
 ) -> dict[str, Any]:
     if step_bars <= 0:
         raise ValueError("step_bars must be positive")
-    warmup = warmup_bars(base_params)
+    warmup = _grid_warmup(base_params, grid)
     steps: list[dict[str, Any]] = []
     for start in range(warmup, len(df) - is_bars - oos_bars + 1, step_bars):
         step = _walk_forward_step(
@@ -159,6 +159,11 @@ def _evaluate_overrides(
     return {"params": overrides, **summary}
 
 
+def _grid_warmup(base_params: StrategyParams, grid: dict[str, list[Any]]) -> int:
+    warmups = [warmup_bars(replace(base_params, **combo)) for combo in _grid_combinations(grid)]
+    return max(warmups, default=warmup_bars(base_params))
+
+
 def _grid_combinations(grid: dict[str, list[Any]]) -> list[dict[str, Any]]:
     names = sorted(grid)
     products = itertools.product(*(grid[name] for name in names))
@@ -185,6 +190,12 @@ def _counted_trades(trades: Any, window_start: pd.Timestamp | None) -> list[Any]
     if window_start is None:
         return list(trades)
     return [trade for trade in trades if _entry_time(trade) >= window_start]
+
+
+def _window_equity(equity_curve: pd.Series, window_start: pd.Timestamp | None) -> pd.Series:
+    if window_start is None:
+        return equity_curve
+    return equity_curve.loc[equity_curve.index >= window_start]
 
 
 def _entry_time(trade: Any) -> pd.Timestamp:
