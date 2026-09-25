@@ -25,3 +25,16 @@ def test_describe_data_reads_binance_klines(tmp_path: Path, data_format: str) ->
     assert described["bars"] == 2
     assert described["start"] == "2024-01-01 00:00:00"
     assert described["close_max"] == pytest.approx(42500.0)
+
+
+def test_grid_search_reports_every_tested_combination(tmp_path: Path) -> None:
+    path = tmp_path / "flat.csv"
+    rows = [f"{1704067200000 + hour * 3_600_000},1.1,1.1005,1.0995,1.1,10.0" for hour in range(60)]
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    grid = {"ema_trend": [1, 3], "atr_period": [1, 2, 3]}
+
+    result = json.loads(mcp_server.leviathan_grid_search(str(path), grid, min_trades=1_000))
+
+    assert result["tested"] == 6
+    assert result["kept"] == 0
+    assert result["top"] == []

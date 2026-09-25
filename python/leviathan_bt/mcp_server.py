@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +47,10 @@ def _load_setup(config_path: str | None, overrides: dict[str, Any] | None):
                 f"symbol {sorted(_SYMBOL_FIELDS)}, backtest {sorted(_BACKTEST_FIELDS)}"
             )
     return params, symbol, config
+
+
+def _grid_size(grid: dict[str, list[Any]]) -> int:
+    return math.prod(len(values) for values in grid.values())
 
 
 def _trade_row(trade: Any) -> dict[str, Any]:
@@ -116,14 +121,19 @@ def leviathan_grid_search(
 
     grid maps StrategyParams fields to candidate values, e.g. {"atr_multiplier": [1.0, 1.5, 2.0],
     "risk_reward": [1.5, 2.0, 3.0]}. Combinations with fewer than min_trades trades are dropped
-    (too little evidence). Returns JSON rows: parameter overrides + summary metrics each.
+    (too little evidence). Returns JSON with tested (combinations run), kept (combinations that
+    passed min_trades) and top rows: parameter overrides + summary metrics each.
     WARNING for interpretation: in-sample winners are usually overfit - verify with
     leviathan_walk_forward before trusting any ranking.
     """
     df = data_module.load_any(data_path, data_format)
     params, symbol, config = _load_setup(config_path, None)
     rows = run_grid_search(df, params, grid, symbol, config, n_jobs=1, min_trades=min_trades)
-    return json.dumps({"tested": len(rows), "top": rows[:max_results]}, indent=2, default=str)
+    return json.dumps(
+        {"tested": _grid_size(grid), "kept": len(rows), "top": rows[:max_results]},
+        indent=2,
+        default=str,
+    )
 
 
 @mcp.tool(
