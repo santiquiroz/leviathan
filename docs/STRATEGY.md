@@ -120,7 +120,11 @@ Evaluated on bar `1` (and bar `2` for engulfing). Patterns are checked in this p
 The Python backtester is an **event-driven bar loop** that reproduces MT5 "Open Prices Only" semantics plus high/low SL/TP checks:
 
 - Iterate bars `i` (chronological). Decide using data up to and including bar `i-1` only. Bar `i-1` is the EA's "bar 1".
-- **Entry fill**: `open[i] + spread` for longs (ask), `open[i]` for shorts (bid = chart price). Chart bars are bid-based.
+- **Entry fill**: `open[i] + spread` for longs (ask), `open[i]` for shorts (bid = chart price), then worsened by slippage (`+ slippage` longs, `- slippage` shorts); the slipped price is the trade's `entry_price`. Chart bars are bid-based.
+- **SL/TP anchor**: SL, TP and the initial risk (`|anchor - SL|`, used for risk % sizing and R multiples) are computed from the unslipped ask (longs) / bid (shorts), like the EA's `ProcessSignal`.
+- **Position management timing**: a position opened on bar `i` is managed from bar `i+1`. On each later bar, before that bar's SL/TP check:
+  - **Break-even** reads only the bar's open, as the EA sees it in "Open Prices Only": bid `open[i]` for longs, ask `open[i] + spread` for shorts. It triggers when that price is at least `breakevenTriggerR * initial risk` beyond `entry_price`, and moves SL to `entry_price ± offset`. Earlier highs/lows do not arm it.
+  - **ATR trailing** uses the previous bar's close (bid) `∓ ATR[i-1] * trailMultiplier`. This approximates the EA, which trails from the bid (longs) / ask (shorts) of the bar's first tick.
 - **SL/TP checks** (per bar, while position open): longs exit on bid (`low[i] <= SL` → SL; `high[i] >= TP` → TP); shorts exit on ask (`high[i] + spread >= SL` → SL; `low[i] + spread <= TP` → TP).
 - **Same-bar ambiguity**: if a single bar's range covers both SL and TP, assume **SL first** (worst case). The engine counts and reports ambiguous bars.
 - **Indicators**: EMA = standard exponential (`alpha = 2/(n+1)`). ATR = Wilder smoothing seeded exactly like MT5 `iATR`: first value at index `period` = SMA of `TR[1..period]` (the degenerate `TR[0] = high-low` is excluded), then `atr[i] = (atr[i-1]*(period-1) + TR[i]) / period`.

@@ -42,13 +42,20 @@ def _frame(bars: list[tuple[float, float, float, float]]) -> pd.DataFrame:
     return pd.DataFrame(bars, columns=["open", "high", "low", "close"], index=index)
 
 
-def _signals(df: pd.DataFrame, long_rows: tuple[int, ...], atr_value: float = 1.0) -> pd.DataFrame:
+def _signals(
+    df: pd.DataFrame,
+    long_rows: tuple[int, ...],
+    atr_value: float = 1.0,
+    short_rows: tuple[int, ...] = (),
+) -> pd.DataFrame:
     long_signal = np.zeros(len(df), dtype=bool)
     long_signal[list(long_rows)] = True
+    short_signal = np.zeros(len(df), dtype=bool)
+    short_signal[list(short_rows)] = True
     return pd.DataFrame(
         {
             "long_signal": long_signal,
-            "short_signal": np.zeros(len(df), dtype=bool),
+            "short_signal": short_signal,
             "atr": np.full(len(df), atr_value),
             "swing_sl_long": np.full(len(df), np.nan),
             "swing_sl_short": np.full(len(df), np.nan),
@@ -71,10 +78,10 @@ def test_bar_covering_sl_and_tp_exits_as_worst_case_sl() -> None:
     trades, _ = run_backtest(df, _signals(df, (2,)), _PARAMS, _SYMBOL, _CONFIG)
     assert len(trades) == 1
     trade = trades[0]
-    # entry 100.03, SL 98.53, TP 103.03 all inside the 98..104 bar
+    # SL 98.52 and TP 103.02 (anchored to the ask 100.02) both inside the 98..104 bar
     assert trade.exit_reason == "sl"
     assert trade.ambiguous is True
-    assert trade.exit_price == pytest.approx(98.53 - 0.01)
+    assert trade.exit_price == pytest.approx(98.52 - 0.01)
     assert trade.exit_time == df.index[3]
 
 
@@ -117,3 +124,65 @@ def test_end_of_data_force_closes_open_position() -> None:
     assert trade.exit_time == df.index[4]
     # longs close on the bid, i.e. the raw chart close
     assert trade.exit_price == pytest.approx(100.0)
+
+
+_BE_CONFIG = replace(_CONFIG, use_breakeven=True, breakeven_offset_points=5.0)
+
+
+def test_long_sl_and_tp_anchor_to_ask_without_slippage() -> None:
+    df = _frame([_FLAT_BAR] * 5)
+    trades, _ = run_backtest(df, _signals(df, (2,)), _PARAMS, _SYMBOL, _CONFIG)
+    trade = trades[0]
+    ask = 100.0 + 0.02
+    assert trade.entry_price == pytest.approx(ask + 0.01)
+    assert trade.sl == pytest.approx(ask - 1.0 * _PARAMS.atr_multiplier)
+    assert trade.tp == pytest.approx(ask + 1.0 * _PARAMS.atr_multiplier * _PARAMS.risk_reward)
+
+
+def test_short_sl_and_tp_anchor_to_bid_without_slippage() -> None:
+    df = _frame([_FLAT_BAR] * 5)
+    trades, _ = run_backtest(df, _signals(df, (), short_rows=(2,)), _PARAMS, _SYMBOL, _CONFIG)
+    trade = trades[0]
+    bid = 100.0
+    assert trade.direction == -1
+    assert trade.entry_price == pytest.approx(bid - 0.01)
+    assert trade.sl == pytest.approx(bid + 1.0 * _PARAMS.atr_multiplier)
+    assert trade.tp == pytest.approx(bid - 1.0 * _PARAMS.atr_multiplier * _PARAMS.risk_reward)
+
+
+def test_long_breakeven_ignores_previous_high_when_open_is_below_trigger() -> None:
+    # fill 100.03, risk 1.5 -> +1R at bid 101.53; bar 3 high reaches it, bar 4 opens below it
+    bars = [_FLAT_BAR] * 3 + [(100.0, 101.6, 99.5, 101.0), (101.0, 101.2, 100.0, 101.0), (101.0, 101.2, 100.5, 101.0)]
+    df = _frame(bars)
+    trades, _ = run_backtest(df, _signals(df, (2,)), _PARAMS, _SYMBOL, _BE_CONFIG)
+    trade = trades[0]
+    assert trade.exit_reason == "end"
+    assert trade.sl == pytest.approx(98.52)
+
+
+def test_long_breakeven_moves_sl_when_open_bid_reaches_trigger() -> None:
+    bars = [_FLAT_BAR] * 3 + [(100.0, 101.0, 99.5, 101.0), (101.6, 101.8, 101.0, 101.6)]
+    df = _frame(bars)
+    trades, _ = run_backtest(df, _signals(df, (2,)), _PARAMS, _SYMBOL, _BE_CONFIG)
+    trade = trades[0]
+    assert trade.exit_reason == "end"
+    assert trade.sl == pytest.approx(100.03 + 0.05)
+
+
+def test_short_breakeven_ignores_previous_low_when_open_ask_is_above_trigger() -> None:
+    # fill 99.99, risk 1.5 -> +1R at ask 98.49; bar 4 opens at bid 98.48, i.e. ask 98.50
+    bars = [_FLAT_BAR] * 3 + [(100.0, 100.2, 98.0, 98.5), (98.48, 98.9, 98.3, 98.5), (98.5, 98.9, 98.3, 98.5)]
+    df = _frame(bars)
+    trades, _ = run_backtest(df, _signals(df, (), short_rows=(2,)), _PARAMS, _SYMBOL, _BE_CONFIG)
+    trade = trades[0]
+    assert trade.exit_reason == "end"
+    assert trade.sl == pytest.approx(101.5)
+
+
+def test_short_breakeven_moves_sl_when_open_ask_reaches_trigger() -> None:
+    bars = [_FLAT_BAR] * 3 + [(100.0, 100.2, 99.0, 99.0), (98.46, 98.9, 98.3, 98.5)]
+    df = _frame(bars)
+    trades, _ = run_backtest(df, _signals(df, (), short_rows=(2,)), _PARAMS, _SYMBOL, _BE_CONFIG)
+    trade = trades[0]
+    assert trade.exit_reason == "end"
+    assert trade.sl == pytest.approx(99.99 - 0.05)

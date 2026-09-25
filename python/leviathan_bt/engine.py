@@ -71,28 +71,31 @@ def _session_allows(hour: int, config: BacktestConfig) -> bool:
     return hour >= start or hour < end
 
 
-def _entry_fill(direction: int, open_price: float, symbol: SymbolSpec) -> float:
-    if direction == 1:
-        return open_price + symbol.spread + symbol.slippage
-    return open_price - symbol.slippage
+def _entry_anchor(direction: int, open_price: float, symbol: SymbolSpec) -> float:
+    # ask for longs, bid (chart price) for shorts: the EA derives SL/TP from this quote
+    return open_price + symbol.spread if direction == 1 else open_price
+
+
+def _entry_fill(direction: int, anchor: float, symbol: SymbolSpec) -> float:
+    return anchor + direction * symbol.slippage
 
 
 def _entry_stop(
-    direction: int, fill: float, atr_prev: float, swing_prev: float, params: StrategyParams
+    direction: int, anchor: float, atr_prev: float, swing_prev: float, params: StrategyParams
 ) -> float:
     if params.sl_mode == "atr":
-        return fill - direction * atr_prev * params.atr_multiplier
+        return anchor - direction * atr_prev * params.atr_multiplier
     return swing_prev
 
 
-def _stop_is_valid(direction: int, fill: float, sl: float) -> bool:
+def _stop_is_valid(direction: int, anchor: float, sl: float) -> bool:
     if not math.isfinite(sl) or sl <= 0.0:
         return False
-    return sl < fill if direction == 1 else sl > fill
+    return sl < anchor if direction == 1 else sl > anchor
 
 
-def _take_profit(direction: int, fill: float, sl: float, risk_reward: float) -> float:
-    return fill + direction * abs(fill - sl) * risk_reward
+def _take_profit(direction: int, anchor: float, sl: float, risk_reward: float) -> float:
+    return anchor + direction * abs(anchor - sl) * risk_reward
 
 
 def _normalize_lots(lots: float, symbol: SymbolSpec) -> float:
@@ -123,35 +126,36 @@ def _try_open(
     symbol: SymbolSpec,
     config: BacktestConfig,
 ) -> _Position | None:
-    fill = _entry_fill(direction, open_price, symbol)
-    sl = _entry_stop(direction, fill, atr_prev, swing_prev, params)
-    if not _stop_is_valid(direction, fill, sl):
+    anchor = _entry_anchor(direction, open_price, symbol)
+    sl = _entry_stop(direction, anchor, atr_prev, swing_prev, params)
+    if not _stop_is_valid(direction, anchor, sl):
         return None
-    lots = _position_lots(equity_now, abs(fill - sl), symbol, config)
+    lots = _position_lots(equity_now, abs(anchor - sl), symbol, config)
     if lots <= 0.0:
         return None
     return _Position(
         direction=direction,
         entry_time=entry_time,
-        entry_price=fill,
+        entry_price=_entry_fill(direction, anchor, symbol),
         sl=sl,
-        tp=_take_profit(direction, fill, sl, params.risk_reward),
-        initial_risk=abs(fill - sl),
+        tp=_take_profit(direction, anchor, sl, params.risk_reward),
+        initial_risk=abs(anchor - sl),
         lots=lots,
     )
 
 
 def _apply_breakeven(
-    position: _Position, high_prev: float, low_prev: float, symbol: SymbolSpec, config: BacktestConfig
+    position: _Position, open_bid: float, symbol: SymbolSpec, config: BacktestConfig
 ) -> None:
+    # Open Prices Only: the EA sees just the bar's first tick, bid for longs and ask for shorts
     offset = config.breakeven_offset_points * symbol.point
     trigger = config.breakeven_trigger_r * position.initial_risk
-    # simplification: triggers read bid highs/lows for both sides, ask adjustment for shorts is ignored
     if position.direction == 1:
-        if high_prev >= position.entry_price + trigger and position.sl < position.entry_price:
+        if open_bid >= position.entry_price + trigger and position.sl < position.entry_price:
             position.sl = position.entry_price + offset
         return
-    if low_prev <= position.entry_price - trigger and position.sl > position.entry_price:
+    open_ask = open_bid + symbol.spread
+    if open_ask <= position.entry_price - trigger and position.sl > position.entry_price:
         position.sl = position.entry_price - offset
 
 
@@ -173,15 +177,14 @@ def _apply_trailing(
 
 def _manage_position(
     position: _Position,
-    high_prev: float,
-    low_prev: float,
+    open_bid: float,
     close_prev: float,
     atr_prev: float,
     symbol: SymbolSpec,
     config: BacktestConfig,
 ) -> None:
     if config.use_breakeven:
-        _apply_breakeven(position, high_prev, low_prev, symbol, config)
+        _apply_breakeven(position, open_bid, symbol, config)
     if config.use_trailing:
         _apply_trailing(position, close_prev, atr_prev, config)
 
@@ -299,7 +302,7 @@ def run_backtest(
         else:
             # positions opened this bar are managed from the next bar, matching EA first-tick order
             _manage_position(
-                position, highs[i - 1], lows[i - 1], closes[i - 1], atr_values[i - 1], symbol, config
+                position, opens[i], closes[i - 1], atr_values[i - 1], symbol, config
             )
         if position is not None:
             hit = _exit_on_bar(position, highs[i], lows[i], symbol)
