@@ -49,6 +49,11 @@ def _load_setup(config_path: str | None, overrides: dict[str, Any] | None):
     return params, symbol, config
 
 
+def _tail(items: list[Any], count: int) -> list[Any]:
+    # items[-0:] would return everything
+    return items[max(0, len(items) - count):]
+
+
 def _grid_size(grid: dict[str, list[Any]]) -> int:
     return math.prod(len(values) for values in grid.values())
 
@@ -98,7 +103,7 @@ def leviathan_run_backtest(
         {
             "data": {"path": data_path, "bars": len(df), "start": str(df.index[0]), "end": str(df.index[-1])},
             "summary": summary,
-            "last_trades": [_trade_row(t) for t in trades[-max(0, last_trades):]],
+            "last_trades": [_trade_row(t) for t in _tail(trades, last_trades)],
         },
         indent=2,
     )
@@ -220,7 +225,7 @@ def leviathan_read_ea_signals(csv_path: str, last: int = 20) -> str:
         )
     lines = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     header = ["time", "symbol", "timeframe", "direction", "pattern", "entry", "sl", "tp", "lots"]
-    rows = [dict(zip(header, line.split(";"))) for line in lines[-max(0, last):]]
+    rows = [dict(zip(header, line.split(";"))) for line in _tail(lines, last)]
     return json.dumps({"total_signals": len(lines), "last": rows}, indent=2)
 
 

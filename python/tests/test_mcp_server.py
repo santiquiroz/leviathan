@@ -83,6 +83,12 @@ def test_run_backtest_rejects_unknown_override() -> None:
         mcp_server.leviathan_run_backtest(str(_SAMPLE), overrides={"not_a_field": 1})
 
 
+def test_run_backtest_with_zero_last_trades_returns_no_trades() -> None:
+    result = json.loads(mcp_server.leviathan_run_backtest(str(_SAMPLE), str(_CONFIG), last_trades=0))
+    assert result["summary"]["trades"] > 0
+    assert result["last_trades"] == []
+
+
 def test_walk_forward_tool_returns_rolling_steps() -> None:
     raw = mcp_server.leviathan_walk_forward(
         str(_SAMPLE), {"risk_reward": [1.5, 2.0]}, is_bars=1500, oos_bars=500, step_bars=500,
@@ -117,6 +123,12 @@ def test_read_ea_signals_returns_the_last_rows_as_named_fields(tmp_path: Path) -
     assert [row["time"] for row in result["last"]] == ["2024.01.02 10:00", "2024.01.03 10:00"]
     assert result["last"][0]["direction"] == "short"
     assert result["last"][0]["lots"] == "0.1"
+
+
+def test_read_ea_signals_with_zero_last_returns_no_rows(tmp_path: Path) -> None:
+    result = json.loads(mcp_server.leviathan_read_ea_signals(str(_signal_log(tmp_path)), last=0))
+    assert result["total_signals"] == 3
+    assert result["last"] == []
 
 
 def test_read_ea_signals_explains_how_to_enable_a_missing_log(tmp_path: Path) -> None:
