@@ -1,11 +1,21 @@
 from __future__ import annotations
 
+from dataclasses import replace
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from leviathan_bt import sweep
-from leviathan_bt.config import BacktestConfig, StrategyParams, SymbolSpec
+from leviathan_bt.config import BacktestConfig, StrategyParams, SymbolSpec, load_toml
+from leviathan_bt.data import load_csv
+from leviathan_bt.strategy import warmup_bars
+
+_PYTHON_DIR = Path(__file__).resolve().parents[1]
+_SAMPLE = _PYTHON_DIR.parent / "data" / "sample" / "EURUSD_H1.csv"
+_EXAMPLE_CONFIG = _PYTHON_DIR / "examples" / "config.example.toml"
+_SAMPLE_GRID = {"atr_multiplier": [1.0, 2.0], "risk_reward": [1.5, 2.0]}
 
 # warmup = max(ema_trend*3, 1*2, 1+2): 3 with ema_trend=1, 9 with ema_trend=3
 _PARAMS = StrategyParams(
@@ -111,3 +121,79 @@ def test_run_full_drawdown_ignores_losses_before_the_window(monkeypatch: pytest.
     assert windowed_trades == []
     assert windowed["max_drawdown"] == 0.0
     assert windowed["max_drawdown_pct"] == 0.0
+
+
+@pytest.fixture(scope="module")
+def sample() -> tuple[pd.DataFrame, StrategyParams, SymbolSpec, BacktestConfig]:
+    return (load_csv(_SAMPLE), *load_toml(_EXAMPLE_CONFIG))
+
+
+def test_grid_search_serial_ranks_every_combination_by_profit_factor(sample) -> None:
+    df, params, symbol, config = sample
+
+    rows = sweep.grid_search(df, params, _SAMPLE_GRID, symbol, config, n_jobs=1, min_trades=1)
+
+    assert sorted((row["params"]["atr_multiplier"], row["params"]["risk_reward"]) for row in rows) == [
+        (1.0, 1.5), (1.0, 2.0), (2.0, 1.5), (2.0, 2.0)
+    ]
+    factors = [row["profit_factor"] for row in rows]
+    assert factors == sorted(factors, reverse=True)
+
+
+def test_grid_search_rows_match_a_single_run_with_the_same_overrides(sample) -> None:
+    df, params, symbol, config = sample
+
+    rows = sweep.grid_search(df, params, _SAMPLE_GRID, symbol, config, n_jobs=1, min_trades=1)
+
+    for row in rows:
+        expected = sweep.run(df, replace(params, **row["params"]), symbol, config)
+        assert {key: value for key, value in row.items() if key != "params"} == expected
+
+
+def test_grid_search_drops_combinations_below_min_trades(sample) -> None:
+    df, params, symbol, config = sample
+    all_rows = sweep.grid_search(df, params, _SAMPLE_GRID, symbol, config, n_jobs=1, min_trades=1)
+    threshold = sorted(row["trades"] for row in all_rows)[1]
+
+    kept = sweep.grid_search(df, params, _SAMPLE_GRID, symbol, config, n_jobs=1, min_trades=threshold)
+
+    assert len(kept) == sum(1 for row in all_rows if row["trades"] >= threshold)
+    assert all(row["trades"] >= threshold for row in kept)
+
+
+def test_walk_forward_on_sample_data_steps_through_rolling_windows(sample) -> None:
+    df, params, symbol, config = sample
+    is_bars, oos_bars, step_bars = 1500, 500, 500
+    grid = {"risk_reward": [1.5, 2.0]}
+    starts = range(warmup_bars(params), len(df) - is_bars - oos_bars + 1, step_bars)
+
+    result = sweep.walk_forward(
+        df, params, grid, symbol, config, is_bars=is_bars, oos_bars=oos_bars, step_bars=step_bars, min_trades=1
+    )
+
+    steps = result["steps"]
+    assert [step["is_start"] for step in steps] == [df.index[start] for start in starts]
+    assert [step["oos_start"] for step in steps] == [df.index[start + is_bars] for start in starts]
+    assert all(step["params"]["risk_reward"] in grid["risk_reward"] for step in steps)
+    is_mean = sum(step["is_expectancy_r"] for step in steps) / len(steps)
+    oos_mean = sum(step["oos_expectancy_r"] for step in steps) / len(steps)
+    assert result["is_expectancy_r"] == pytest.approx(is_mean)
+    assert result["oos_expectancy_r"] == pytest.approx(oos_mean)
+    assert result["wf_efficiency"] == pytest.approx(oos_mean / is_mean)
+
+
+def test_walk_forward_skips_windows_without_enough_in_sample_trades(sample) -> None:
+    df, params, symbol, config = sample
+
+    result = sweep.walk_forward(
+        df, params, {"risk_reward": [2.0]}, symbol, config,
+        is_bars=1500, oos_bars=500, step_bars=500, min_trades=10_000,
+    )
+
+    assert result == {"steps": [], "is_expectancy_r": 0.0, "oos_expectancy_r": 0.0, "wf_efficiency": 0.0}
+
+
+def test_walk_forward_rejects_non_positive_step(sample) -> None:
+    df, params, symbol, config = sample
+    with pytest.raises(ValueError, match="step_bars"):
+        sweep.walk_forward(df, params, {"risk_reward": [2.0]}, symbol, config, 1500, 500, 0)
