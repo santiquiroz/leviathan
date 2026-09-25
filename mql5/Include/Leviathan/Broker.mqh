@@ -26,13 +26,19 @@ double LevNormalizePrice(double price)
    return NormalizeDouble(price, _Digits);
   }
 
+double LevFloorToStep(const double lots, const double step)
+  {
+   // Round the quotient before flooring (0.29 / 0.01 = 28.999999999999996), same as engine.py
+   return NormalizeDouble(MathFloor(NormalizeDouble(lots / step, 8)) * step, 8);
+  }
+
 double LevNormalizeLots(double lots)
   {
    double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
    double maxLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
    double step   = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
    if(step > 0)
-      lots = MathFloor(lots / step) * step;
+      lots = LevFloorToStep(lots, step);
    return MathMin(MathMax(lots, minLot), maxLot);
   }
 
