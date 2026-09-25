@@ -22,6 +22,8 @@ TRADE = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_
 
 MAGIC = 226701
 DEFAULT_MAX_LOTS = 1.0
+SYMBOL_FILLING_FOK = 1
+SYMBOL_FILLING_IOC = 2
 _TIMEFRAMES = {
     "M1": mt5.TIMEFRAME_M1, "M5": mt5.TIMEFRAME_M5, "M15": mt5.TIMEFRAME_M15, "M30": mt5.TIMEFRAME_M30,
     "H1": mt5.TIMEFRAME_H1, "H4": mt5.TIMEFRAME_H4, "D1": mt5.TIMEFRAME_D1, "W1": mt5.TIMEFRAME_W1,
@@ -81,6 +83,22 @@ def _current_tick(symbol: str) -> Any:
     if tick is None:
         raise RuntimeError(f"no tick data for {symbol}: {mt5.last_error()}")
     return tick
+
+
+def _filling_mode(info: Any) -> int:
+    # FOK first when both are allowed: all-or-nothing fills keep the requested size exact.
+    if info.filling_mode & SYMBOL_FILLING_FOK:
+        return mt5.ORDER_FILLING_FOK
+    if info.filling_mode & SYMBOL_FILLING_IOC:
+        return mt5.ORDER_FILLING_IOC
+    return mt5.ORDER_FILLING_RETURN
+
+
+def _symbol_filling_mode(symbol: str) -> int:
+    info = mt5.symbol_info(symbol)
+    if info is None:
+        raise RuntimeError(f"no symbol info for {symbol}: {mt5.last_error()}")
+    return _filling_mode(info)
 
 
 @mcp.tool(name="mt5_account_info", title="MT5 account snapshot", annotations=READ_ONLY)
@@ -221,6 +239,7 @@ def mt5_place_order(
     tick = _current_tick(symbol)
     price = tick.ask if direction == "long" else tick.bid
     _validate_stops(direction, price, sl, tp)
+    filling = _symbol_filling_mode(symbol)
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": symbol,
@@ -233,7 +252,7 @@ def mt5_place_order(
         "magic": MAGIC,
         "comment": comment,
         "type_time": mt5.ORDER_TIME_GTC,
-        "type_filling": mt5.ORDER_FILLING_IOC,
+        "type_filling": filling,
     }
     result = mt5.order_send(request)
     if result is None:
@@ -255,6 +274,7 @@ def mt5_close_position(ticket: int) -> str:
         raise ValueError(f"no open position with ticket {ticket}")
     p = positions[0]
     tick = _current_tick(p.symbol)
+    filling = _symbol_filling_mode(p.symbol)
     closing_type = mt5.ORDER_TYPE_SELL if p.type == mt5.POSITION_TYPE_BUY else mt5.ORDER_TYPE_BUY
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
@@ -267,7 +287,7 @@ def mt5_close_position(ticket: int) -> str:
         "magic": MAGIC,
         "comment": "Leviathan-MCP close",
         "type_time": mt5.ORDER_TIME_GTC,
-        "type_filling": mt5.ORDER_FILLING_IOC,
+        "type_filling": filling,
     }
     result = mt5.order_send(request)
     if result is None:

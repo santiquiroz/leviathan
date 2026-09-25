@@ -12,6 +12,8 @@ DEMO = 0
 REAL = 2
 BID = 1.1000
 ASK = 1.1002
+SYMBOL_FILLING_FOK = 1
+SYMBOL_FILLING_IOC = 2
 
 
 class FakeMT5(SimpleNamespace):
@@ -28,6 +30,8 @@ class FakeMT5(SimpleNamespace):
         self.account = SimpleNamespace(login=123456, trade_mode=trade_mode)
         self.tick = tick if tick is not None else SimpleNamespace(bid=BID, ask=ASK, time=0)
         self.tick_available = True
+        self.filling_mode = SYMBOL_FILLING_FOK
+        self.symbol_available = True
         self.sent: list[dict] = []
         self.rates_requests: list[tuple] = []
         self.positions: tuple = ()
@@ -46,6 +50,11 @@ class FakeMT5(SimpleNamespace):
 
     def symbol_info_tick(self, symbol: str) -> SimpleNamespace | None:
         return self.tick if self.tick_available else None
+
+    def symbol_info(self, symbol: str) -> SimpleNamespace | None:
+        if not self.symbol_available:
+            return None
+        return SimpleNamespace(filling_mode=self.filling_mode, point=0.00001)
 
     def positions_get(self, **kwargs) -> tuple:
         return self.positions
@@ -192,3 +201,46 @@ def test_recent_bars_rejects_non_positive_count(bridge, fake_mt5, count):
 def test_recent_bars_caps_count_at_1000(bridge, fake_mt5):
     bridge.mt5_recent_bars("EURUSD", "H1", 5000)
     assert fake_mt5.rates_requests[0][3] == 1000
+
+
+def _open_long_position(fake: FakeMT5) -> None:
+    fake.positions = (SimpleNamespace(symbol="EURUSD", type=fake.POSITION_TYPE_BUY, volume=0.10),)
+
+
+FILLING_CASES = [
+    (SYMBOL_FILLING_FOK, "ORDER_FILLING_FOK"),
+    (SYMBOL_FILLING_IOC, "ORDER_FILLING_IOC"),
+    (SYMBOL_FILLING_FOK | SYMBOL_FILLING_IOC, "ORDER_FILLING_FOK"),
+    (0, "ORDER_FILLING_RETURN"),
+]
+FILLING_IDS = ["fok-only", "ioc-only", "fok-and-ioc-prefers-fok", "neither-uses-return"]
+
+
+@pytest.mark.parametrize(("symbol_filling", "expected"), FILLING_CASES, ids=FILLING_IDS)
+def test_place_order_uses_filling_mode_allowed_by_symbol(bridge, fake_mt5, trading_on, symbol_filling, expected):
+    fake_mt5.filling_mode = symbol_filling
+    _long(bridge)
+    assert fake_mt5.sent[0]["type_filling"] == getattr(fake_mt5, expected)
+
+
+@pytest.mark.parametrize(("symbol_filling", "expected"), FILLING_CASES, ids=FILLING_IDS)
+def test_close_position_uses_filling_mode_allowed_by_symbol(bridge, fake_mt5, trading_on, symbol_filling, expected):
+    _open_long_position(fake_mt5)
+    fake_mt5.filling_mode = symbol_filling
+    bridge.mt5_close_position(42)
+    assert fake_mt5.sent[0]["type_filling"] == getattr(fake_mt5, expected)
+
+
+def test_place_order_without_symbol_info_raises_runtime_error(bridge, fake_mt5, trading_on):
+    fake_mt5.symbol_available = False
+    with pytest.raises(RuntimeError, match="no symbol info"):
+        _long(bridge)
+    assert fake_mt5.sent == []
+
+
+def test_close_position_without_symbol_info_raises_runtime_error(bridge, fake_mt5, trading_on):
+    _open_long_position(fake_mt5)
+    fake_mt5.symbol_available = False
+    with pytest.raises(RuntimeError, match="no symbol info"):
+        bridge.mt5_close_position(42)
+    assert fake_mt5.sent == []
