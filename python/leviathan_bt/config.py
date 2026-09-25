@@ -3,6 +3,39 @@ from __future__ import annotations
 import tomllib
 from dataclasses import dataclass, fields
 from pathlib import Path
+from typing import NoReturn
+
+SL_MODES = ("atr", "swing")
+SIZING_MODES = ("fixed_lot", "risk_percent")
+_HOURS = range(24)
+
+
+def _fail(owner: object, name: str, requirement: str) -> NoReturn:
+    value = getattr(owner, name)
+    raise ValueError(f"{type(owner).__name__}.{name} must be {requirement}, got {value!r}")
+
+
+def _check_choice(owner: object, name: str, choices: tuple[str, ...]) -> None:
+    if getattr(owner, name) not in choices:
+        _fail(owner, name, f"one of {choices}")
+
+
+def _check_positive(owner: object, *names: str) -> None:
+    for name in names:
+        # `not > 0` also rejects NaN
+        if not getattr(owner, name) > 0:
+            _fail(owner, name, "> 0")
+
+
+def _check_open_unit_interval(owner: object, name: str) -> None:
+    if not 0 < getattr(owner, name) < 1:
+        _fail(owner, name, "strictly between 0 and 1")
+
+
+def _check_hour(owner: object, *names: str) -> None:
+    for name in names:
+        if getattr(owner, name) not in _HOURS:
+            _fail(owner, name, "an hour in 0..23")
 
 
 @dataclass(frozen=True)
@@ -20,6 +53,14 @@ class StrategyParams:
     swing_lookback: int = 10
     risk_reward: float = 2.0
 
+    def __post_init__(self) -> None:
+        _check_choice(self, "sl_mode", SL_MODES)
+        _check_positive(
+            self, "ema_fast", "ema_slow", "ema_trend", "structure_lookback", "atr_period", "swing_lookback"
+        )
+        _check_open_unit_interval(self, "pinbar_wick_ratio")
+        _check_positive(self, "risk_reward")
+
 
 @dataclass(frozen=True)
 class SymbolSpec:
@@ -36,6 +77,11 @@ class SymbolSpec:
     lot_max: float = 100.0
     tick_value: float = 1.0
     tick_size: float = 0.00001
+
+    def __post_init__(self) -> None:
+        _check_positive(self, "point", "tick_size", "lot_step")
+        if not self.lot_min <= self.lot_max:
+            _fail(self, "lot_min", f"<= lot_max ({self.lot_max!r})")
 
     @property
     def spread(self) -> float:
@@ -64,6 +110,11 @@ class BacktestConfig:
     use_session_filter: bool = False
     session_start_hour: int = 7
     session_end_hour: int = 20
+
+    def __post_init__(self) -> None:
+        _check_choice(self, "sizing_mode", SIZING_MODES)
+        _check_positive(self, "initial_equity", "lot_size", "risk_percent")
+        _check_hour(self, "session_start_hour", "session_end_hour")
 
 
 def _build(cls, section: dict):
