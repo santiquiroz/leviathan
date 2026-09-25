@@ -75,14 +75,18 @@ def leviathan_run_backtest(
     config_path: str | None = None,
     overrides: dict[str, Any] | None = None,
     last_trades: int = 10,
+    data_format: str = "auto",
 ) -> str:
     """Run one backtest of the Leviathan strategy on an OHLCV CSV (MT5 export or Binance kline format).
 
     Without config_path the spec defaults are used (EURUSD 5-digit symbol spec). overrides is a flat
     dict of any StrategyParams / SymbolSpec / BacktestConfig field, e.g. {"atr_multiplier": 2.0,
     "risk_reward": 3.0, "spread_points": 15}. Returns JSON: summary metrics + the last N trades.
+
+    data_format is "auto" (default; Binance klines are detected by their epoch first column), "mt5"
+    or "binance". The other data tools accept the same parameter.
     """
-    df = data_module.load_csv(data_path)
+    df = data_module.load_any(data_path, data_format)
     params, symbol, config = _load_setup(config_path, overrides)
     summary, trades, _ = run_full(df, params, symbol, config)
     return json.dumps(
@@ -106,6 +110,7 @@ def leviathan_grid_search(
     config_path: str | None = None,
     min_trades: int = 30,
     max_results: int = 10,
+    data_format: str = "auto",
 ) -> str:
     """Test every combination of the given parameter grid and rank results by profit factor.
 
@@ -115,7 +120,7 @@ def leviathan_grid_search(
     WARNING for interpretation: in-sample winners are usually overfit - verify with
     leviathan_walk_forward before trusting any ranking.
     """
-    df = data_module.load_csv(data_path)
+    df = data_module.load_any(data_path, data_format)
     params, symbol, config = _load_setup(config_path, None)
     rows = run_grid_search(df, params, grid, symbol, config, n_jobs=1, min_trades=min_trades)
     return json.dumps({"tested": len(rows), "top": rows[:max_results]}, indent=2, default=str)
@@ -133,13 +138,14 @@ def leviathan_walk_forward(
     oos_bars: int = 1000,
     step_bars: int = 1000,
     config_path: str | None = None,
+    data_format: str = "auto",
 ) -> str:
     """Rolling walk-forward: optimize the grid in-sample, test the winner out-of-sample, step forward.
 
     The honest way to evaluate a parameter sweep. Returns JSON with per-step results and
     wf_efficiency (out-of-sample R / in-sample R) - values below ~0.5 suggest overfitting.
     """
-    df = data_module.load_csv(data_path)
+    df = data_module.load_any(data_path, data_format)
     params, symbol, config = _load_setup(config_path, None)
     result = run_walk_forward(df, params, grid, symbol, config, is_bars, oos_bars, step_bars)
     return json.dumps(result, indent=2, default=str)
@@ -150,9 +156,9 @@ def leviathan_walk_forward(
     title="Describe an OHLCV data file",
     annotations=READ_ONLY,
 )
-def leviathan_describe_data(data_path: str) -> str:
+def leviathan_describe_data(data_path: str, data_format: str = "auto") -> str:
     """Inspect an OHLCV CSV before backtesting: bar count, date range, inferred timeframe, gaps, price stats."""
-    df = data_module.load_csv(data_path)
+    df = data_module.load_any(data_path, data_format)
     deltas = df.index.to_series().diff().dropna()
     typical = deltas.mode().iloc[0] if len(deltas) else None
     gaps = int((deltas > typical * 1.5).sum()) if typical is not None else 0

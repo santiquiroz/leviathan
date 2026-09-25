@@ -120,8 +120,10 @@ print(result["wf_efficiency"])   # out-of-sample R / in-sample R — below ~0.5 
 
 Data sources (see loaders in `python/leviathan_bt/data.py`):
 - **MT5 export** (highest fidelity — same broker feed as the EA): open a chart, `Ctrl+S` or use the terminal's export, then `load_csv`.
-- **Binance Vision** kline CSVs for crypto.
+- **Binance Vision** kline CSVs for crypto (`load_binance_csv`).
 - **yfinance** for quick daily-bar demos (`pip install -e .[data]` from `python/`).
+
+The CLI (`--format auto|mt5|binance`) and the MCP data tools (`data_format`) read both CSV formats; `auto`, the default, recognizes Binance klines by their epoch first column. From Python, `data.load_any(path)` does the same.
 
 ## Configuration
 

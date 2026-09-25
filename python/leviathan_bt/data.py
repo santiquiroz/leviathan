@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+from itertools import islice
 from pathlib import Path
 
 import pandas as pd
@@ -7,6 +9,22 @@ import pandas as pd
 _PRICE_COLUMNS = ("open", "high", "low", "close")
 _VOLUME_ALIASES = ("volume", "tickvol", "vol")
 _EPOCH_UNITS = ((1e17, "ns"), (1e14, "us"), (1e11, "ms"))
+DATA_FORMATS = ("auto", "mt5", "binance")
+_BINANCE_MIN_EPOCH_DIGITS = 11
+_SNIFFED_LINES = 2
+_CELL_SEPARATORS = re.compile(r"[,\t;]")
+
+
+def load_any(path: str | Path, fmt: str = "auto") -> pd.DataFrame:
+    if fmt not in DATA_FORMATS:
+        raise ValueError(f"unknown data format {fmt!r}; expected one of {DATA_FORMATS}")
+    file_path = Path(path)
+    resolved = _detect_format(file_path) if fmt == "auto" else fmt
+    return load_binance_csv(file_path) if resolved == "binance" else load_csv(file_path)
+
+
+def _detect_format(path: Path) -> str:
+    return "binance" if _starts_with_epoch(path) else "mt5"
 
 
 def load_csv(path: str | Path) -> pd.DataFrame:
@@ -43,6 +61,18 @@ def _from_yfinance(raw: pd.DataFrame) -> pd.DataFrame:
         frame.columns = frame.columns.get_level_values(0)
     frame.columns = [str(name).lower() for name in frame.columns]
     return _to_canonical(frame, pd.Series(frame.index))
+
+
+def _starts_with_epoch(path: Path) -> bool:
+    # Binance klines are headerless (or carry one header row) and lead with an ms/us epoch
+    first_digits = next((cell for cell in _leading_cells(path) if cell.isdigit()), "")
+    return len(first_digits) >= _BINANCE_MIN_EPOCH_DIGITS
+
+
+def _leading_cells(path: Path) -> list[str]:
+    with open(path, encoding="utf-8-sig") as handle:
+        lines = list(islice(handle, _SNIFFED_LINES))
+    return [_CELL_SEPARATORS.split(line.strip(), maxsplit=1)[0] for line in lines]
 
 
 def _sniff_separator(path: Path) -> str:
